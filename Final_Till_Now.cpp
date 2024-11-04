@@ -9,6 +9,7 @@
 
 using namespace std;
 
+
 struct Point {
     double x, y;
     Point(double x = 0, double y = 0) : x(x), y(y) {}
@@ -80,35 +81,26 @@ vector<Point> dp_algorithm(const vector<pair<pair<int, int>, pair<int, int>>>& p
                            double lambda, int p, int num_interpolations, vector<Point>& internalarr, vector<Point>& externalarr) {
     int N = pairs.size();
     vector<vector<double>> dp(N + 1, vector<double>(num_interpolations, numeric_limits<double>::max()));
-    
-    //Stores the optimal previous step and is used to check for the current index.
     vector<vector<pair<int, int>>> prev(N + 1, vector<pair<int, int>>(num_interpolations, {-1, -1}));
-    
-    
-    //Setting the cost as 0 for all interpolations for the segment 0.
+
     for (int j = 0; j < num_interpolations; ++j) {
         dp[0][j] = 0;
     }
 
     for (int i = 1; i <= N; i++) {
-        
-        //Pick the external and internal points from the pairs.
         Point external(pairs[i % N].first.first, pairs[i % N].first.second);
         Point internal(pairs[i % N].second.first, pairs[i % N].second.second);
-        
-        //Running for all interpolation points.
+
         for (int j = 0; j < num_interpolations; ++j) {
             double x_i = static_cast<double>(j) / (num_interpolations - 1);
             Point M_i = interpolate(external, internal, x_i);
-            
-            //Storing the previous best.
+
             for (int k = 0; k < num_interpolations; ++k) {
                 Point prev_external(pairs[i - 1].first.first, pairs[i - 1].first.second);
                 Point prev_internal(pairs[i - 1].second.first, pairs[i - 1].second.second);
                 double x_i_minus_1 = static_cast<double>(k) / (num_interpolations - 1);
                 Point M_i_minus_1 = interpolate(prev_external, prev_internal, x_i_minus_1);
-                
-                //Cost to reach from the previous best to current index.
+
                 double cost = calculate_cost(M_i_minus_1, M_i, grid, lambda, p, prev_external, prev_internal, external, internal);
                 if (dp[i - 1][k] + cost < dp[i][j]) {
                     dp[i][j] = dp[i - 1][k] + cost;
@@ -117,20 +109,14 @@ vector<Point> dp_algorithm(const vector<pair<pair<int, int>, pair<int, int>>>& p
             }
         }
     }
-    
-    
-    //Finding the minimum interpolation value possible.
+
     int min_j = 0;
     for (int j = 0; j < num_interpolations; ++j) {
         if (dp[N][j] < dp[N][min_j]) {
             min_j = j;
         }
     }
-    
-    //This retrieves the previous indices prev_i and prev_j from the prev table. 
-    // The prev table was built during the DP process to remember the previous state that led to the current optimal state. 
-    //Essentially, it stores the traceback pointers.
-    
+
     vector<Point> optimal_points;
     int i = N, j = min_j;
     while (i > 0) {
@@ -150,7 +136,7 @@ vector<Point> dp_algorithm(const vector<pair<pair<int, int>, pair<int, int>>>& p
 
 void check_volume_fractions(const vector<Point>& optimal_points, const vector<vector<float>>& grid, vector<Point>& internalarr, vector<Point>& externalarr) {
     cout << "\nChecking Volume Fractions:\n";
-
+    cout<<endl;
 
     for (int i = 0; i < optimal_points.size(); i++) {
         int j = (i + 1) % optimal_points.size();
@@ -163,6 +149,159 @@ void check_volume_fractions(const vector<Point>& optimal_points, const vector<ve
 
         cout << "From Point: (" << M_i.x << ", " << M_i.y << ") To Point: (" << M_i_plus_1.x << ", " << M_i_plus_1.y << ") => Expected Volume Fraction is: " << expected_volume_fraction << ", Calculated Volume Fraction is: " << calculated_volume_fraction << endl;
     }
+}
+
+pair<double, double> perpendicularBisector(const Point& p1, const Point& p2) {
+    double midX = (p1.x + p2.x) / 2.0;
+    double midY = (p1.y + p2.y) / 2.0;
+    double m_segment;
+    
+    if (p2.x - p1.x != 0) {
+        m_segment = (p2.y - p1.y) / (p2.x - p1.x);
+    } else {
+        m_segment = numeric_limits<double>::infinity();
+    }
+
+    double m_bisector;
+    if (m_segment != numeric_limits<double>::infinity()) {
+        m_bisector = -1.0 / m_segment;
+    } else {
+        m_bisector = 0.0;
+    }
+
+    double c_bisector = midY - m_bisector * midX;
+    return {m_bisector, c_bisector};
+}
+
+bool isBetween(double a, double b, double c) {
+    return (a >= min(b, c) && a <= max(b, c));
+}
+
+
+pair<bool, Point> lineSegmentIntersection(const Point& A, const Point& B, double slope, double intercept) {
+    double m1, c1;
+
+    if (fabs(B.x - A.x) < 1e-9) {  // Check for vertical line between A and B
+        m1 = std::numeric_limits<double>::infinity();
+        c1 = A.x;
+    } else {
+        m1 = (B.y - A.y) / (B.x - A.x);
+        c1 = A.y - m1 * A.x;
+    }
+
+    // If the line between A and B is vertical
+    if (std::isinf(m1)) {
+        double y_intersect = slope * A.x + intercept;
+        if (y_intersect >= std::min(A.y, B.y) && y_intersect <= std::max(A.y, B.y)) {
+            return {true, Point(A.x, y_intersect)};
+        }
+        return {false, Point(0, 0)};
+    }
+
+    // If the given line is vertical
+    if (std::isinf(slope)) {
+        double x_intersect = intercept;
+        double y_intersect = m1 * x_intersect + c1;
+        if (x_intersect >= std::min(A.x, B.x) && x_intersect <= std::max(A.x, B.x)) {
+            return {true, Point(x_intersect, y_intersect)};
+        }
+        return {false, Point(0, 0)};
+    }
+
+    // Calculate intersection
+    if (fabs(m1 - slope) < 1e-9) {  // Check if the lines are parallel
+        return {false, Point(0, 0)};
+    }
+
+    double x_intersect = (intercept - c1) / (m1 - slope);
+    double y_intersect = m1 * x_intersect + c1;
+
+    // Check if the intersection is within the segment of points A and B
+    if (x_intersect >= std::min(A.x, B.x) && x_intersect <= std::max(A.x, B.x) &&
+        y_intersect >= std::min(A.y, B.y) && y_intersect <= std::max(A.y, B.y)) {
+        return {true, Point(x_intersect, y_intersect)};
+    }
+
+    return {false, Point(0, 0)};
+}
+
+vector<Point> lineIntersectsQuadrilateral(double m, double c, const Point& a, const Point& b, const Point& d, const Point& e) {
+    vector<Point> intersections;
+    vector<pair<Point, Point>> sides = {{a, b}, {b, d}, {d, e}, {e, a}};
+
+    for (const auto& side : sides) {
+        auto [intersects, point] = lineSegmentIntersection(side.first, side.second, m, c);
+        // cout<<intersects<<endl;
+        if (intersects) {
+            intersections.push_back(point);
+        }
+    }
+
+    return intersections;
+}
+
+double triangleArea(const Point& p1, const Point& p2, const Point& p3) {
+    return fabs(p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2.0;
+}
+
+// int debugcount = 0;
+void printpoint(const Point& p){
+    cout<<"("<<p.x<<","<<p.y<<")"<<endl;
+}
+
+pair<double,pair<double,double>> getbestpoints(const pair<Point,Point>& optimal,const pair<Point,Point>& internal, const pair<Point,Point>& external,vector<Point>& store,int level,const vector<vector<float>>& grid,int p,double threshold=1e-9){
+    Point start = optimal.first;
+    Point end = optimal.second;
+    auto [slope,intercept] = perpendicularBisector(start,end);
+    vector<Point> t1 = lineIntersectsQuadrilateral(slope,intercept,internal.first,external.first,external.second,internal.second);
+    double low = 0;
+    double high = 1;
+    int x1 = (internal.first.x + internal.second.x + external.first.x + external.second.x) / 4;
+    int y1 = (internal.first.y + internal.second.y + external.first.y + external.second.y) / 4;
+    double finx = 0;
+    double fincost = 0;
+    store.push_back(optimal.first);
+    Point tempp=interpolate(t1[0],t1[1],0);
+    bool doesincrementmakesvaluebig = true;
+    bool isfirsttime = true;
+    while (low<high){
+        double mid = (low+high)/2;
+        tempp = interpolate(t1[0],t1[1],mid);
+        double cost = triangleArea(tempp,optimal.second,internal.second)+trapeziumArea(tempp,optimal.first,internal.first,internal.second);
+        if (fabs(cost-grid[x1][y1])<threshold){
+            finx = mid;
+            fincost = cost;
+            store.push_back(tempp);
+            break;
+        }
+        if (isfirsttime){
+            double mid1 = (mid+high)/2;
+            Point tempp1 = interpolate(t1[0],t1[1],mid1);
+            double cost1 = triangleArea(tempp1,optimal.second,internal.second)+trapeziumArea(tempp1,optimal.first,internal.first,internal.second);
+            if (cost1-cost<0){
+                doesincrementmakesvaluebig = false;
+            }
+
+        }
+        if (doesincrementmakesvaluebig){
+            if (cost>grid[x1][y1]){
+                high = mid;
+            }else{
+                low = mid;
+            }
+        }else{
+            if (cost>grid[x1][y1]){
+                low = mid;
+            }else{
+                high = mid;
+            }
+        }
+        isfirsttime=false;
+    }
+    double vol_diff = fabs(fincost - grid[x1][y1]);
+    double fincostfun = pow(vol_diff,p);
+    return {fincostfun,{fincost,grid[x1][y1]}};
+
 }
 
 int main() {
@@ -417,6 +556,7 @@ int main() {
     cout << endl;
 
     cout << "Pairs for DP of {Ei,Ii}" << endl;
+    cout<<endl;
     for (auto i : pairs) {
         cout << "(" << i.first.first << "," << i.first.second << ") and (" << i.second.first << "," << i.second.second << ")" << endl;
     }
@@ -425,12 +565,14 @@ int main() {
     double lambda = 0.001;
     int p = 2;
     int num_interpolations = 1000;
+    double threshold = 1e-9;
 
     vector<Point> internalarr;
     vector<Point> externalarr;
     vector<Point> optimal_points = dp_algorithm(pairs, grid, lambda, p, num_interpolations, internalarr, externalarr);
 
     cout << "Optimal Interpolated Points:" << endl;
+    cout<<endl;
     for (const auto& p : optimal_points) {
         cout << "(" << p.x << ", " << p.y << ")" << endl;
     }
@@ -439,10 +581,49 @@ int main() {
     for (size_t i = 0; i < optimal_points.size(); ++i) {
         total_cost += calculate_cost(optimal_points[i], optimal_points[(i + 1) % optimal_points.size()], grid, lambda, p, externalarr[i], internalarr[i], externalarr[(i + 1) % optimal_points.size()], internalarr[(i + 1) % optimal_points.size()]);
     }
-
+    cout<<endl;
     cout << "Total Cost: " << total_cost << endl;
 
     check_volume_fractions(optimal_points, grid, internalarr, externalarr);
 
+    vector<pair<Point,Point>> optimal_edges;
+    vector<pair<Point,Point>> optimal_internal;
+    vector<pair<Point,Point>> optimal_external;
+    for (int i=0;i<optimal_points.size();i++){
+        optimal_edges.push_back({optimal_points[i],optimal_points[(i+1)%(optimal_points.size())]});
+        optimal_internal.push_back({internalarr[i],internalarr[(i+1)%(optimal_points.size())]});
+        optimal_external.push_back({externalarr[i],externalarr[(i+1)%(optimal_points.size())]});
+    }
+    vector<vector<Point>> optimal_final_points;
+    vector<pair<double,double>> costs;
+    double totalcost = 0;
+    for (int i=0;i<optimal_edges.size();i++){
+        vector<Point> temparr1;
+        pair<double,pair<double,double>> t3=getbestpoints(optimal_edges[i],optimal_internal[i],optimal_external[i],temparr1,1,grid,p,threshold);
+        totalcost+=t3.first;
+        costs.push_back(t3.second);
+        optimal_final_points.push_back(temparr1);
+    }
+    cout<<endl;
+    cout << "Total Cost After Perpendicular Bisector: " << totalcost << endl;
+    cout<<endl;
+    cout<<"Individual Volume Fractions and Original Ones: "<<endl;
+    cout<<endl;
+    for (auto &i:costs){
+        cout<<"Found Volume Fraction==>"<<i.first<<" ==>Original Volume Fraction===>"<<i.second<<endl;
+    }
+    cout<<endl;
+    vector<Point> finalans;
+    for (auto &i:optimal_final_points){
+        finalans.push_back(i[0]);
+        finalans.push_back(i[1]);
+    }
+    // cout<<endl;
+    cout << "Optimal Interpolated Points After Perpendicular Bisector Technique:" << endl;
+    cout<<endl;
+    for (const auto& p : finalans) {
+        cout << "(" << p.x << ", " << p.y << ")" << endl;
+    }
+    
     return 0;
 }
